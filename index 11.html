@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Riemann Sum Builder — 6 Gates (2 ft spacing)</title>
+  <style>
+    :root { --fg:#0a2540; --muted:#5f6b7a; --bg:#ffffff; --card:#f6f8fb; --blue:#1d4ed8; --blueDark:#1e3a8a; --red:#dc2626; --redDark:#991b1b; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background:var(--bg); color:var(--fg); }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; }
+    p.lead { margin: 0 0 12px; color: var(--muted); }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:10px 0 14px; }
+    .btn { border:1px solid #d0d7e2; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    .btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+    .input { padding:8px 10px; border:1px solid #cfd7e6; border-radius:8px; width:100%; box-sizing:border-box; }
+    .card { background:var(--card); border:1px solid #e2e8f0; border-radius:12px; padding:12px; }
+    .grid-3 { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:8px; border-bottom:1px solid #e2e8f0; text-align:left; }
+    .muted { color: var(--muted); font-size: 14px; }
+    .footer { margin-top: 10px; color: var(--muted); font-size: 12px; }
+    .charts { display:grid; gap:12px; }
+    .chart { height: 360px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:8px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .row > * { flex: none; }
+    .spacer { flex: 1 1 auto; }
+    .mini { font-size: 12px; color: var(--muted); }
+    svg { width: 100%; height: 300px; display:block; }
+    .axis { stroke:#475569; stroke-width:1; }
+    .grid { stroke:#e2e8f0; stroke-width:1; }
+    .tick { fill:#475569; font-size:11px; }
+    .legend { font-size: 12px; fill:#334155; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Flight Path Distance Estimation Using Riemann Sums</h1>
+    <p class="lead">Enter gate timestamps <strong>t<sub>0</sub>…t<sub>6</sub></strong> (s). We compute <em>Δt</em>, gate-time samples <em>v*</em>, and Left/Right Riemann sums. Assumes <strong>2 ft</strong> per segment (6 segments). <span class="mini">Left rectangles = <span style="color:var(--blue)">blue</span>, Right rectangles = <span style="color:var(--red)">red</span>.</span></p>
+
+    <div class="controls">
+      <div class="row">
+        <span class="muted">Units:</span>
+        <button class="btn active" id="btn-ft">ft</button>
+        <button class="btn" id="btn-m">m</button>
+      </div>
+      <div class="row">
+        <span class="muted">Tape distance S<sub>geom</sub>:</span>
+        <input class="input" id="sgeom" style="width:120px" type="number" step="0.001" value="12">
+        <span class="muted" id="units-label">ft</span>
+      </div>
+      <div class="row">
+        <span class="muted">Rectangles:</span>
+        <button class="btn active" id="rect-L">Left</button>
+        <button class="btn" id="rect-R">Right</button>
+      </div>
+      <div class="row">
+        <span class="muted">Smooth v*:</span>
+        <button class="btn" id="smooth-off">Off</button>
+        <button class="btn active" id="smooth-on">On</button>
+      </div>
+      <button class="btn" id="reset">Reset</button>
+      <div class="spacer"></div>
+    </div>
+
+    <div id="warn" class="card" style="display:none; border-color:#fecaca; background:#fff1f2;">
+      <div id="warn-text" style="color:#991b1b; font-size:14px;"></div>
+    </div>
+
+    
+    <div id="warn" class="card" style="display:none; border-color:#fecaca; background:#fff1f2;">
+      <div id="warn-text" style="color:#991b1b; font-size:14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="muted" style="margin:4px 0;">Stopwatch readings &mdash; record the time shown on the watch <em>at the moment you pass each gate</em>.</div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width:140px;">Checkpoint</th>
+              <th>Color</th>
+              <th>Symbol</th>
+              <th>Stopwatch reading</th>
+              <th>Δt from previous</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Start</td><td>&mdash;</td><td>t₀</td>
+              <td><input class="input" type="number" step="0.1" id="t0" value="0" aria-label="t0 start"></td>
+              <td class="muted">—</td>
+            </tr>
+            <tr>
+              <td>Red hoop A</td><td>Red</td><td>t₁</td>
+              <td><input class="input" type="number" step="0.1" id="t1" aria-label="t1 Red A"></td>
+              <td id="dt1" class="muted">—</td>
+            </tr>
+            <tr>
+              <td>Red hoop B</td><td>Red</td><td>t₂</td>
+              <td><input class="input" type="number" step="0.1" id="t2" aria-label="t2 Red B"></td>
+              <td id="dt2" class="muted">—</td>
+            </tr>
+            <tr>
+              <td>Yellow hoop A</td><td>Yellow</td><td>t₃</td>
+              <td><input class="input" type="number" step="0.1" id="t3" aria-label="t3 Yellow A"></td>
+              <td id="dt3" class="muted">—</td>
+            </tr>
+            <tr>
+              <td>Yellow hoop B</td><td>Yellow</td><td>t₄</td>
+              <td><input class="input" type="number" step="0.1" id="t4" aria-label="t4 Yellow B"></td>
+              <td id="dt4" class="muted">—</td>
+            </tr>
+            <tr>
+              <td>Blue hoop A</td><td>Blue</td><td>t₅</td>
+              <td><input class="input" type="number" step="0.1" id="t5" aria-label="t5 Blue A"></td>
+              <td id="dt5" class="muted">—</td>
+            </tr>
+            <tr>
+              <td>Blue hoop B / Land</td><td>Blue</td><td>t₆</td>
+              <td><input class="input" type="number" step="0.1" id="t6" aria-label="t6 Blue B / Land"></td>
+              <td id="dt6" class="muted">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid-3">
+
+      <div class="card">
+        <div class="muted">Geometric Length S<sub>geom</sub></div>
+        <div style="font-size:28px;font-weight:700;" id="SgeomOut">12 ft</div>
+        <div class="mini" id="errOut"></div>
+      </div>
+      <div class="card">
+        <div class="muted">Left Sum (L)</div>
+        <div style="font-size:28px;font-weight:700;" id="LOut">—</div>
+      </div>
+      <div class="card">
+        <div class="muted">Right Sum (R)</div>
+        <div style="font-size:28px;font-weight:700;" id="ROut">—</div>
+      </div>
+    </div>
+
+    <div class="charts" style="margin-top:12px;">
+      <div class="chart">
+        <div class="muted" style="margin:4px 0;">Speed samples v*(t) and Left/Right rectangles (SVG, offline)</div>
+        <svg id="svg-speed"></svg>
+      </div>
+      <div class="chart">
+        <div class="muted" style="margin:4px 0;">Rectangle areas per interval (L in blue, R in red) + S<sub>geom</sub> line</div>
+        <svg id="svg-bars"></svg>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="muted" style="margin:4px 0;">Summary (what to write on your lab sheet)</div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th><th>Checkpoint</th><th>Color</th><th>Stopwatch reading</th><th>Δt from previous</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>t₁</td><td>Red hoop A</td><td>Red</td><td id="sum_t1">—</td><td id="sum_dt1">—</td></tr>
+            <tr><td>t₂</td><td>Red hoop B</td><td>Red</td><td id="sum_t2">—</td><td id="sum_dt2">—</td></tr>
+            <tr><td>t₃</td><td>Yellow hoop A</td><td>Yellow</td><td id="sum_t3">—</td><td id="sum_dt3">—</td></tr>
+            <tr><td>t₄</td><td>Yellow hoop B</td><td>Yellow</td><td id="sum_t4">—</td><td id="sum_dt4">—</td></tr>
+            <tr><td>t₅</td><td>Blue hoop A</td><td>Blue</td><td id="sum_t5">—</td><td id="sum_dt5">—</td></tr>
+            <tr><td>t₆</td><td>Blue hoop B / Land</td><td>Blue</td><td id="sum_t6">—</td><td id="sum_dt6">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+
+    <div class="footer">
+      v*(t<sub>0</sub>)=d/Δt₁, v*(t<sub>6</sub>)=d/Δt₆; for 1..5, v*(t<sub>i</sub>)=2d/(Δtᵢ+Δtᵢ₊₁). Left uses v* at left endpoints; Right uses v* at right endpoints. d=2 ft per segment.
+
+    </div>
+  </div>
+
+  <script>
+    const feetToMeters = (ft) => ft * 0.3048;
+    const metersToFeet = (m) => m / 0.3048;
+    const round = (x, d=3) => (isFinite(x) ? Number(x.toFixed(d)) : NaN);
+
+    const state = {
+      units: 'ft',
+      times: [0,NaN,NaN,NaN,NaN,NaN,NaN],
+      sGeomM: 6 * feetToMeters(2),
+      rectMode: 'L', // 'L' or 'R'
+      smooth: true
+    };
+
+    const el = (id) => document.getElementById(id);
+
+    function setUnits(u){
+      state.units = u;
+      el('btn-ft').classList.toggle('active', u==='ft');
+      el('btn-m').classList.toggle('active', u==='m');
+      el('units-label').textContent = u;
+      const disp = u==='ft' ? round(metersToFeet(state.sGeomM)) + ' ft' : round(state.sGeomM,3) + ' m';
+      el('SgeomOut').textContent = disp;
+      renderAll();
+    }
+    function setRectMode(mode){
+      state.rectMode = mode;
+      el('rect-L').classList.toggle('active', mode==='L');
+      el('rect-R').classList.toggle('active', mode==='R');
+      renderAll();
+    }
+    function setSmooth(on){
+      state.smooth = on;
+      el('smooth-on').classList.toggle('active', on===true);
+      el('smooth-off').classList.toggle('active', on===false);
+      renderAll();
+    }
+
+    function getDisplayDist(m){
+      return state.units === 'ft' ? round(metersToFeet(m)) : round(m,3);
+    }
+    function getDisplaySpeed(mps){
+      return state.units === 'ft' ? round(mps*3.28084) : round(mps,3);
+    }
+
+    function parseTimes(){
+      for (let i=0;i<7;i++){
+        const v = el('t'+i).value;
+        state.times[i] = v === '' ? NaN : Number(v);
+      }
+    }
+
+    function compute(){
+      const times = state.times.slice();
+      const issues = [];
+      // Ensure non-decreasing times; flag any non-positive deltas
+      for (let i=1;i<=6;i++){
+        if (isFinite(times[i]) && isFinite(times[i-1]) && times[i] <= times[i-1]){
+          issues.push(`t${i} (=${times[i]}) \u2264 t${i-1} (=${times[i-1]}) — times must increase.`);
+        }
+      }
+      const deltas = [];
+      for (let i=1;i<=6;i++){
+        const dt = times[i] - times[i-1];
+        deltas.push(isFinite(dt) && dt>0 ? dt : NaN);
+      }
+      const dM = feetToMeters(2);
+      let vStar = Array(7).fill(NaN);
+      if (isFinite(deltas[0])) vStar[0] = dM / deltas[0];
+      for (let i=1;i<=5;i++){
+        const a = deltas[i-1], b = deltas[i];
+        vStar[i] = (isFinite(a)&&isFinite(b)) ? (2*dM)/(a+b) : NaN;
+      }
+      if (isFinite(deltas[5])) vStar[6] = dM / deltas[5];
+
+      // Optional smoothing (simple 3-point moving average on interior samples)
+      if (state.smooth){
+        const vs = vStar.slice();
+        for (let i=1;i<=5;i++){
+          const L = vs[i-1], C = vs[i], R = vs[i+1];
+          if (isFinite(L) && isFinite(C) && isFinite(R)) vStar[i] = (L + C + R)/3;
+        }
+      }
+
+      let L = 0, R = 0;
+      const Lareas = [], Rareas = [];
+      for (let i=1;i<=6;i++){
+        const dt = deltas[i-1];
+        const vL = vStar[i-1];
+        const vR = vStar[i];
+        const aL = (isFinite(vL)&&isFinite(dt) && vL>=0)? vL*dt : NaN;
+        const aR = (isFinite(vR)&&isFinite(dt) && vR>=0)? vR*dt : NaN;
+        Lareas.push(aL);
+        Rareas.push(aR);
+        if (isFinite(aL)) L += aL;
+        if (isFinite(aR)) R += aR;
+      }
+
+      return { times, deltas, vStar, L, R, Lareas, Rareas, issues };
+    }
+
+    function drawAxes(svg, xMin, xMax, yMin, yMax, xTicks=6, yTicks=5, yLabel='speed'){
+      const w = svg.clientWidth, h = svg.clientHeight;
+      const m = {l:40,r:10,t:10,b:30};
+      const W = w - m.l - m.r, H = h - m.t - m.b;
+      svg.innerHTML = '';
+      const g = (tag, attrs) => {
+        const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (const k in attrs) e.setAttribute(k, attrs[k]);
+        svg.appendChild(e);
+        return e;
+      };
+      const x = v => m.l + (v-xMin)/(xMax-xMin)*W;
+      const y = v => m.t + H - (v-yMin)/(yMax-yMin)*H;
+      // grid
+      for (let i=0;i<=xTicks;i++){
+        const xv = xMin + (xMax-xMin)*i/xTicks;
+        g('line', {x1:x(xv), y1:m.t, x2:x(xv), y2:m.t+H, class:'grid'});
+        g('text', {x:x(xv), y:h-8, 'text-anchor':'middle', class:'tick'}).textContent = round(xv,2);
+      }
+      for (let j=0;j<=yTicks;j++){
+        const yv = yMin + (yMax-yMin)*j/yTicks;
+        g('line', {x1:m.l, y1:y(yv), x2:m.l+W, y2:y(yv), class:'grid'});
+        g('text', {x:6, y:y(yv)+3, class:'tick'}).textContent = round(yv,2);
+      }
+      // axes
+      g('line', {x1:m.l, y1:m.t, x2:m.l, y2:m.t+H, class:'axis'});
+      g('line', {x1:m.l, y1:m.t+H, x2:m.l+W, y2:m.t+H, class:'axis'});
+      return {g, x, y, box:{m,W,H}};
+    }
+
+    function renderSpeed(calc){
+      const svg = el('svg-speed');
+      const times = calc.times.filter(t=>isFinite(t));
+      if (times.length < 2){
+        svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" class="tick">Enter t₀…t₆ to see rectangles and v*(t).</text>';
+        return;
+      }
+      const tMin = Math.min(...times);
+      const tMax = Math.max(...times);
+      const vVals = calc.vStar.filter(v=>isFinite(v));
+      const vMax = Math.max(1, ...vVals)*1.2;
+      const scaler = drawAxes(svg, tMin, tMax, 0, vMax, 6, 5, 'speed');
+
+      // Draw rectangles
+      for (let i=1;i<=6;i++){
+        const t1 = calc.times[i-1], t2 = calc.times[i];
+        const v = state.rectMode==='L' ? calc.vStar[i-1] : calc.vStar[i];
+        if (!isFinite(t1) || !isFinite(t2) || !isFinite(v)) continue;
+        const x1 = scaler.x(t1), x2 = scaler.x(t2);
+        const y0 = scaler.y(0), yv = scaler.y(v);
+        const fill = state.rectMode==='L' ? 'var(--blue)' : 'var(--red)';
+        const stroke = state.rectMode==='L' ? 'var(--blueDark)' : 'var(--redDark)';
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', Math.min(x1,x2));
+        rect.setAttribute('y', Math.min(y0,yv));
+        rect.setAttribute('width', Math.abs(x2-x1));
+        rect.setAttribute('height', Math.abs(y0-yv));
+        rect.setAttribute('fill', fill);
+        rect.setAttribute('fill-opacity', '0.25');
+        rect.setAttribute('stroke', stroke);
+        rect.setAttribute('stroke-width', '1');
+        svg.appendChild(rect);
+      }
+
+      // Draw v*(t) points and polyline
+      const pts = [];
+      for (let i=0;i<=6;i++){
+        const t = calc.times[i], v = calc.vStar[i];
+        if (!isFinite(t) || !isFinite(v)) continue;
+        const cx = scaler.x(t), cy = scaler.y(v);
+        pts.push([cx,cy]);
+        const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circ.setAttribute('cx', cx); circ.setAttribute('cy', cy); circ.setAttribute('r', 3);
+        circ.setAttribute('fill', '#111827');
+        svg.appendChild(circ);
+      }
+      if (pts.length >= 2){
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M '+pts.map(p=>p.join(',')).join(' L '));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#111827');
+        path.setAttribute('stroke-width', '1.5');
+        svg.appendChild(path);
+      }
+
+      // Legend
+      const legend = document.createElementNS('http://www.w3.org/2000/svg','text');
+      legend.setAttribute('x', svg.clientWidth - 10);
+      legend.setAttribute('y', 16);
+      legend.setAttribute('text-anchor','end');
+      legend.setAttribute('class','legend');
+      legend.textContent = state.rectMode==='L' ? 'Left rectangles' : 'Right rectangles';
+      svg.appendChild(legend);
+    }
+
+    function renderBars(calc){
+      const svg = el('svg-bars');
+      const areas = (state.rectMode==='L') ? calc.Lareas : calc.Rareas;
+      const have = areas.filter(a=>isFinite(a)).length;
+      if (have === 0){
+        svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" class="tick">Enter times to see rectangle areas.</text>';
+        return;
+      }
+      const aMax = Math.max(state.sGeomM, ...(areas.filter(a=>isFinite(a))))*1.2;
+      const scaler = drawAxes(svg, 0.5, 6.5, 0, aMax, 6, 5, 'area');
+      // Bars
+      for (let i=1;i<=6;i++){
+        const a = areas[i-1];
+        if (!isFinite(a)) continue;
+        const cx = scaler.x(i);
+        const x1 = scaler.x(i)-20, x2 = scaler.x(i)+20;
+        const y0 = scaler.y(0), ya = scaler.y(a);
+        const fill = state.rectMode==='L' ? 'var(--blue)' : 'var(--red)';
+        const stroke = state.rectMode==='L' ? 'var(--blueDark)' : 'var(--redDark)';
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        rect.setAttribute('x', x1);
+        rect.setAttribute('y', Math.min(y0, ya));
+        rect.setAttribute('width', x2-x1);
+        rect.setAttribute('height', Math.abs(y0-ya));
+        rect.setAttribute('fill', fill);
+        rect.setAttribute('fill-opacity', '0.5');
+        rect.setAttribute('stroke', stroke);
+        rect.setAttribute('stroke-width', '1');
+        svg.appendChild(rect);
+        const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+        label.setAttribute('x', cx);
+        label.setAttribute('y', Math.min(y0, ya) - 4);
+        label.setAttribute('text-anchor','middle');
+        label.setAttribute('class','tick');
+        const disp = getDisplayDist(a);
+        label.textContent = disp + ' ' + (state.units==='ft'?'ft':'m');
+        svg.appendChild(label);
+      }
+      // S_geom reference line
+      const yS = scaler.y(state.sGeomM);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', scaler.box.m.l);
+      line.setAttribute('x2', scaler.box.m.l + scaler.box.W);
+      line.setAttribute('y1', yS);
+      line.setAttribute('y2', yS);
+      line.setAttribute('stroke', '#0f172a');
+      line.setAttribute('stroke-dasharray', '5 4');
+      svg.appendChild(line);
+      const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x', scaler.box.m.l + scaler.box.W - 6);
+      t.setAttribute('y', yS - 4);
+      t.setAttribute('text-anchor','end');
+      t.setAttribute('class','legend');
+      t.textContent = 'S_geom';
+      svg.appendChild(t);
+    }
+
+    function renderNumbers(calc){
+      // update Δt display cells and summary
+      for (let i=1;i<=6;i++){
+        const dt = calc.deltas[i-1];
+        const ti = calc.times[i];
+        const dtCell = document.getElementById('dt'+i);
+        const st = document.getElementById('sum_t'+i);
+        const sdt = document.getElementById('sum_dt'+i);
+        if (dtCell) dtCell.textContent = isFinite(dt)? dt.toFixed(2)+' s' : '—';
+        if (st) st.textContent = isFinite(ti)? ti.toFixed(2)+' s' : '—';
+        if (sdt) sdt.textContent = isFinite(dt)? dt.toFixed(2)+' s' : '—';
+      }
+
+      const warn = el('warn');
+      const wtxt = el('warn-text');
+      if (calc.issues && calc.issues.length){
+        warn.style.display = '';
+        wtxt.textContent = 'Check your timestamps: ' + calc.issues.join('  ');
+      } else { warn.style.display = 'none'; wtxt.textContent = ''; }
+      // mark bad inputs
+      const ids=['t0','t1','t2','t3','t4','t5','t6'];
+      for (let i=1;i<=6;i++){
+        const a=document.getElementById(ids[i-1]), b=document.getElementById(ids[i]);
+        if (a && b){
+          const bad = isFinite(calc.times[i]) && isFinite(calc.times[i-1]) && calc.times[i] <= calc.times[i-1];
+          b.classList.toggle('bad', bad);
+        }
+      }
+
+      el('SgeomOut').textContent = getDisplayDist(state.sGeomM) + ' ' + state.units;
+      el('LOut').textContent = isFinite(calc.L) ? (getDisplayDist(calc.L) + ' ' + state.units) : '—';
+      el('ROut').textContent = isFinite(calc.R) ? (getDisplayDist(calc.R) + ' ' + state.units) : '—';
+      if (isFinite(calc.L) && isFinite(calc.R)){
+        const errL = Math.abs(calc.L - state.sGeomM) / state.sGeomM * 100;
+        const errR = Math.abs(calc.R - state.sGeomM) / state.sGeomM * 100;
+        el('errOut').textContent = `|L−S| = ${round(errL,2)}%,  |R−S| = ${round(errR,2)}%`;
+      } else {
+        el('errOut').textContent = '';
+      }
+    }
+
+    function renderAll(){
+      parseTimes();
+      const calc = compute();
+      renderNumbers(calc);
+      renderSpeed(calc);
+      renderBars(calc);
+    }
+
+    // Wire up
+    for (let i=0;i<7;i++){ el('t'+i).addEventListener('input', renderAll); }
+    el('sgeom').addEventListener('input', e => {
+      const val = Number(e.target.value);
+      state.sGeomM = state.units==='ft' ? feetToMeters(val) : val;
+      renderAll();
+    });
+    el('btn-ft').addEventListener('click', ()=> setUnits('ft'));
+    el('btn-m').addEventListener('click', ()=> setUnits('m'));
+    el('rect-L').addEventListener('click', ()=> setRectMode('L'));
+    el('rect-R').addEventListener('click', ()=> setRectMode('R'));
+    el('reset').addEventListener('click', ()=>{
+      state.times = [0,NaN,NaN,NaN,NaN,NaN,NaN];
+      el('t0').value = 0; for (let i=1;i<=6;i++) el('t'+i).value='';
+      state.sGeomM = 6 * feetToMeters(2);
+      setUnits('ft'); setRectMode('L'); renderAll();
+    });
+
+    // init
+    setUnits('ft');
+    setRectMode('L');
+    setSmooth(true);
+    renderAll();
+  </script>
+</body>
+</html>
